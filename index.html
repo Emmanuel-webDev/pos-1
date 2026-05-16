@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Base POS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+
+    <!-- ── SCREEN: BASKET ───────────────────────────────────────── -->
+    <div id="screen-basket" class="screen active">
+      <header class="top-bar">
+        <div class="top-bar__left">
+          <div class="top-bar__logo">⬡</div>
+          <div>
+            <div class="top-bar__title">Base_P.OS</div>
+            <div class="top-bar__sub">Base Sepolia Testnet</div>
+          </div>
+        </div>
+        <button id="btn-wallet" class="wallet-btn">
+          <div class="wallet-avatar"></div>
+          <span id="wallet-label">Connect Wallet</span>
+          <div id="wallet-dot" class="wallet-dot" style="background:#ccc"></div>
+        </button>
+      </header>
+
+      <div class="screen__body">
+        <div class="add-form glass-card fade-up">
+          <div class="add-form__row">
+            <input id="item-name"  class="add-form__name"  type="text"   placeholder="Item name" autocomplete="off" maxlength="60" />
+            <div class="add-form__price-wrap">
+              <span class="add-form__currency">USDC</span>
+              <input id="item-price" class="add-form__price" type="number" inputmode="decimal" placeholder="0.00" step="0.01" min="0.01" />
+            </div>
+          </div>
+          <button id="btn-add-item" class="add-form__btn" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Item
+          </button>
+        </div>
+
+        <div class="section-label fade-up-1" id="basket-label" style="display:none">
+          Basket · <span id="basket-count">0</span> item<span id="basket-plural"></span>
+        </div>
+
+        <div id="basket-empty" class="empty-state fade-up-2">
+          <div class="empty-state__icon">🛒</div>
+          <div class="empty-state__title">Cart is empty</div>
+          <div class="empty-state__sub">Add items above to get started</div>
+        </div>
+
+        <div id="basket-list" class="basket-list"></div>
+        <div style="height:140px"></div>
+      </div>
+
+      <div id="checkout-footer" class="checkout-footer" style="display:none">
+        <div class="checkout-footer__total">
+          <span class="checkout-footer__label">Total</span>
+          <div class="checkout-footer__amount">
+            <svg width="18" height="18" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="16" fill="#2775CA"/><path d="M20.5 18.3c0-2.1-1.3-2.8-3.8-3.1-1.8-.2-2.2-.7-2.2-1.5s.6-1.3 1.8-1.3c1.1 0 1.7.4 2 1.3.1.2.2.3.4.3h.9c.3 0 .5-.2.5-.5v-.1c-.3-1.4-1.4-2.4-2.8-2.6V9.5c0-.3-.2-.5-.5-.6H16c-.3 0-.5.2-.5.6v1.3c-1.7.2-2.8 1.3-2.8 2.8 0 2 1.2 2.7 3.7 3 1.7.3 2.3.7 2.3 1.6s-.8 1.5-1.9 1.5c-1.5 0-2-.6-2.3-1.5-.1-.2-.2-.3-.4-.3h-.9c-.3 0-.5.2-.5.5v.1c.3 1.5 1.3 2.5 3 2.8v1.3c0 .3.2.5.5.6h.9c.3 0 .5-.2.5-.6v-1.3c1.8-.3 3-.1 3.4-2.8z" fill="white"/></svg>
+            <span id="basket-total">0.00</span>
+            <span class="checkout-footer__unit">USDC</span>
+          </div>
+        </div>
+        <button id="btn-checkout" class="btn-primary">
+          Generate Payment QR · $<span id="checkout-total-label">0.00</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── SCREEN: INVOICE ──────────────────────────────────────── -->
+    <div id="screen-invoice" class="screen">
+      <header class="top-bar">
+        <div class="top-bar__left">
+          <button id="btn-back-invoice" class="back-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div>
+            <div class="top-bar__title">Payment Invoice</div>
+            <div class="top-bar__sub" id="invoice-status-text">Waiting for customer</div>
+          </div>
+        </div>
+        <div class="wallet-btn" style="pointer-events:none">
+          <div class="wallet-avatar"></div>
+          <span id="invoice-wallet-label">—</span>
+          <div class="wallet-dot"></div>
+        </div>
+      </header>
+
+      <div class="screen__body invoice-body">
+
+        <div class="invoice-amount fade-up-1">
+          <svg width="26" height="26" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="16" fill="#2775CA"/><path d="M20.5 18.3c0-2.1-1.3-2.8-3.8-3.1-1.8-.2-2.2-.7-2.2-1.5s.6-1.3 1.8-1.3c1.1 0 1.7.4 2 1.3.1.2.2.3.4.3h.9c.3 0 .5-.2.5-.5v-.1c-.3-1.4-1.4-2.4-2.8-2.6V9.5c0-.3-.2-.5-.5-.6H16c-.3 0-.5.2-.5.6v1.3c-1.7.2-2.8 1.3-2.8 2.8 0 2 1.2 2.7 3.7 3 1.7.3 2.3.7 2.3 1.6s-.8 1.5-1.9 1.5c-1.5 0-2-.6-2.3-1.5-.1-.2-.2-.3-.4-.3h-.9c-.3 0-.5.2-.5.5v.1c.3 1.5 1.3 2.5 3 2.8v1.3c0 .3.2.5.5.6h.9c.3 0 .5-.2.5-.6v-1.3c1.8-.3 3-.1 3.4-2.8z" fill="white"/></svg>
+          <span id="invoice-amount-value" class="invoice-amount__num">0.00</span>
+          <span class="invoice-amount__unit">USDC</span>
+        </div>
+
+        <div id="invoice-pills" class="invoice-pills fade-up-2"></div>
+
+        <!-- QR code embedded in invoice screen -->
+        <div class="qr-wrap fade-up-3">
+          <div class="qr-glow"></div>
+          <div class="glass-card qr-card">
+            <div class="qr-frame">
+              <canvas id="qr-canvas"></canvas>
+            </div>
+            <div class="qr-label">Customer scans with phone camera</div>
+          </div>
+        </div>
+
+        <!-- Awaiting payment spinner -->
+        <div class="awaiting-payment fade-up-4">
+          <div class="awaiting-spinner"></div>
+          <div class="awaiting-text">Awaiting payment…</div>
+          <div class="awaiting-elapsed" id="invoice-elapsed">0s elapsed</div>
+        </div>
+
+        <div class="gasless-note fade-up-5">
+          <span>⚡</span> Base Sepolia · USDC · Instant settlement
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── SCREEN: SUCCESS ──────────────────────────────────────── -->
+    <div id="screen-success" class="screen">
+      <div class="screen__body success-body">
+        <div id="confetti-container" class="confetti-container"></div>
+        <div class="success-check">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div class="success-text fade-up">
+          <h1 class="success-text__title">Payment Received</h1>
+          <div class="success-text__amount">
+            <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="16" fill="#2775CA"/><path d="M20.5 18.3c0-2.1-1.3-2.8-3.8-3.1-1.8-.2-2.2-.7-2.2-1.5s.6-1.3 1.8-1.3c1.1 0 1.7.4 2 1.3.1.2.2.3.4.3h.9c.3 0 .5-.2.5-.5v-.1c-.3-1.4-1.4-2.4-2.8-2.6V9.5c0-.3-.2-.5-.5-.6H16c-.3 0-.5.2-.5.6v1.3c-1.7.2-2.8 1.3-2.8 2.8 0 2 1.2 2.7 3.7 3 1.7.3 2.3.7 2.3 1.6s-.8 1.5-1.9 1.5c-1.5 0-2-.6-2.3-1.5-.1-.2-.2-.3-.4-.3h-.9c-.3 0-.5.2-.5.5v.1c.3 1.5 1.3 2.5 3 2.8v1.3c0 .3.2.5.5.6h.9c.3 0 .5-.2.5-.6v-1.3c1.8-.3 3-.1 3.4-2.8z" fill="white"/></svg>
+            <span id="success-amount" class="success-text__num">0.00</span>
+            <span class="success-text__unit">USDC</span>
+          </div>
+          <div id="success-items" class="success-text__items"></div>
+        </div>
+
+        <div class="eas-card glass-card fade-up-2">
+          <div class="eas-card__header">
+            <span class="eas-card__label">Onchain Attestation</span>
+            <span class="badge-verified">✓ Verified</span>
+          </div>
+          <div class="eas-card__rows">
+            <div class="eas-row"><span>Network</span><span>Base Sepolia</span></div>
+            <div class="eas-row"><span>Tx Hash</span><span id="eas-hash"  class="mono">—</span></div>
+            <div class="eas-row"><span>Block</span>  <span id="eas-block" class="mono">—</span></div>
+            <div class="eas-row"><span>From</span>   <span id="eas-from"  class="mono">—</span></div>
+          </div>
+        </div>
+
+        <div class="success-actions fade-up-3">
+          <button id="btn-view-receipt" class="btn-secondary">View on Basescan ↗</button>
+          <button id="btn-new-sale"     class="btn-primary">
+            New Sale
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SCREEN: HISTORY ──────────────────────────────────────── -->
+    <div id="screen-history" class="screen">
+      <header class="top-bar">
+        <div class="top-bar__left">
+          <div class="top-bar__logo">⬡</div>
+          <div>
+            <div class="top-bar__title">Sales History</div>
+            <div class="top-bar__sub">All verified transactions</div>
+          </div>
+        </div>
+        <div class="wallet-btn" style="pointer-events:none">
+          <div class="wallet-avatar"></div>
+          <span id="history-wallet-label">—</span>
+          <div class="wallet-dot"></div>
+        </div>
+      </header>
+      <div class="screen__body">
+        <div class="summary-card fade-up">
+          <div class="summary-card__label">Today's Revenue</div>
+          <div class="summary-card__amount">
+            <span class="summary-card__num" id="history-today-total">$0.00</span>
+            <span class="summary-card__unit">USDC</span>
+          </div>
+          <div class="summary-card__stats">
+            <div class="summary-stat">
+              <div class="summary-stat__label">Transactions</div>
+              <div class="summary-stat__value" id="history-tx-count">0</div>
+            </div>
+            <div class="summary-stat">
+              <div class="summary-stat__label">Avg. Order</div>
+              <div class="summary-stat__value" id="history-avg">$0.00</div>
+            </div>
+          </div>
+        </div>
+        <div id="history-list" class="history-list"></div>
+        <div style="height:20px"></div>
+      </div>
+    </div>
+
+    <!-- BOTTOM NAV -->
+    <nav class="bottom-nav">
+      <button class="nav-tab active" data-tab="basket">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+        <span>New Sale</span>
+        <div class="nav-tab__indicator"></div>
+      </button>
+      <button class="nav-tab" data-tab="history">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span>History</span>
+        <div class="nav-tab__indicator"></div>
+      </button>
+    </nav>
+
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
