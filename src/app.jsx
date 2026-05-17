@@ -1,16 +1,15 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useAccount, useDisconnect } from "wagmi";
+import { useAccount, useDisconnect, useConnectors } from "wagmi";
 import { createPublicClient, http } from "viem";
 import { baseSepolia } from "viem/chains";
 
-import BasketScreen from "./screens/basketScreen";
-import InvoiceScreen from "./screens/invoiceScreen";
-import SuccessScreen from "./screens/successScreen";
-import HistoryScreen from "./screens/historyScreen";
-import BottomNav from "./components/bottomNav";
-import Toast from "./components/toast";
+import BasketScreen from "./screens/BasketScreen";
+import InvoiceScreen from "./screens/InvoiceScreen";
+import SuccessScreen from "./screens/SuccessScreen";
+import HistoryScreen from "./screens/HistoryScreen";
+import BottomNav from "./components/BottomNav";
+import Toast from "./components/Toast";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
 export const EXPLORER_URL = "https://sepolia.basescan.org";
 export const USDC_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 export const USDC_DECIMALS = 6;
@@ -22,13 +21,13 @@ export const PURCHASE_COMPLETED_EVENT = {
   type: "event",
   name: "PurchaseCompleted",
   inputs: [
-    { type: "address", name: "merchant", indexed: true },
-    { type: "address", name: "customer", indexed: true },
+    { type: "address", name: "merchant",    indexed: true  },
+    { type: "address", name: "customer",    indexed: true  },
     { type: "uint256", name: "totalAmount", indexed: false },
-    { type: "string[]", name: "items", indexed: false },
-    { type: "uint256[]", name: "prices", indexed: false },
-    { type: "uint256", name: "timestamp", indexed: false },
-    { type: "bool", name: "isUSDC", indexed: false },
+    { type: "string[]",name: "items",       indexed: false },
+    { type: "uint256[]",name:"prices",      indexed: false },
+    { type: "uint256", name: "timestamp",   indexed: false },
+    { type: "bool",    name: "isUSDC",      indexed: false },
   ],
 };
 
@@ -37,75 +36,88 @@ export const publicClient = createPublicClient({
   transport: http("https://sepolia.base.org"),
 });
 
-// ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [screen, setScreen] = useState("basket"); // basket | invoice | success | history
-  const [basket, setBasket] = useState([]);
-  const [salesHistory, setSalesHistory] = useState([]);
-  const [lastSale, setLastSale] = useState(null);
-  const [toast, setToast] = useState(null);
-  const [checkoutPhase, setCheckoutPhase] = useState("connect"); // connect | approve | pay
-  const [waitingText, setWaitingText] = useState("Waiting for customer…");
+  const [screen, setScreen]               = useState("basket");
+  const [basket, setBasket]               = useState([]);
+  const [salesHistory, setSalesHistory]   = useState([]);
+  const [lastSale, setLastSale]           = useState(null);
+  const [toast, setToast]                 = useState(null);
+  const [checkoutPhase, setCheckoutPhase] = useState("connect");
+  const [waitingText, setWaitingText]     = useState("Waiting for customer…");
 
-  // Merchant wallet — persisted across checkout flow
-  const merchantAddressRef = useRef(null);
+  // Merchant lives in plain React state — never cleared by wagmi
   const [merchantAddress, setMerchantAddress] = useState(null);
 
-  // Whether we're in checkout mode (so wallet connect events go to customer)
   const checkoutInProgressRef = useRef(false);
-  const [checkoutInProgress, setCheckoutInProgress] = useState(false);
-
   const [customerAddress, setCustomerAddress] = useState(null);
   const customerAddressRef = useRef(null);
 
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, connector } = useAccount();
   const { disconnect } = useDisconnect();
+  const connectors = useConnectors();
 
-  // ── Wallet change handler ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (!isConnected || !address) {
-      if (!checkoutInProgressRef.current) {
-        merchantAddressRef.current = null;
-        setMerchantAddress(null);
+  // ── Hard-kill the WalletConnect session ──────────────────────────────────
+  // Calls disconnect() on the connector object itself (kills the pairing on
+  // the customer's phone) AND calls wagmi's disconnect to clear local state.
+  const hardDisconnect = useCallback(async () => {
+    try {
+      // Kill every connector that's currently active (catches WC + injected)
+      for (const c of connectors) {
+        try { await c.disconnect(); } catch (_) {}
       }
-      return;
-    }
+      // Also kill the currently active one via wagmi
+      if (connector) {
+        try { await connector.disconnect(); } catch (_) {}
+      }
+    } catch (_) {}
+    // wagmi state cleanup
+    disconnect();
+  }, [connector, connectors, disconnect]);
 
+  // ── Route wagmi events ────────────────────────────────────────────────────
+  useEffect(() => {
     if (checkoutInProgressRef.current) {
-      // This wallet connect is the CUSTOMER during checkout
-      customerAddressRef.current = address;
-      setCustomerAddress(address);
+      if (isConnected && address) {
+        customerAddressRef.current = address;
+        setCustomerAddress(address);
+      } else {
+        // Customer disconnected from their own phone
+        customerAddressRef.current = null;
+        setCustomerAddress(null);
+      }
     } else {
-      // Normal merchant connect
-      merchantAddressRef.current = address;
-      setMerchantAddress(address);
+      if (isConnected && address) {
+        setMerchantAddress(address);
+      }
     }
   }, [address, isConnected]);
 
-  // ── Toast helper ──────────────────────────────────────────────────────────
   const showToast = useCallback((message, type = "info") => {
     setToast({ message, type, id: Date.now() });
   }, []);
 
-  // ── Checkout state helpers ────────────────────────────────────────────────
-  const startCheckoutMode = useCallback(() => {
+  // ── startCheckoutMode ─────────────────────────────────────────────────────
+  // Merchant address already in state. Hard-kill any active session so
+  // ConnectKit shows a brand-new QR for the customer.
+  const startCheckoutMode = useCallback(async () => {
     checkoutInProgressRef.current = true;
-    setCheckoutInProgress(true);
     customerAddressRef.current = null;
     setCustomerAddress(null);
-  }, []);
+    await hardDisconnect();
+  }, [hardDisconnect]);
 
-  const endCheckoutMode = useCallback(() => {
+  // ── endCheckoutMode ───────────────────────────────────────────────────────
+  // Called after payment or Back. Hard-kills the customer's WC pairing so
+  // next checkout starts completely fresh.
+  const endCheckoutMode = useCallback(async () => {
     checkoutInProgressRef.current = false;
-    setCheckoutInProgress(false);
     customerAddressRef.current = null;
     setCustomerAddress(null);
-  }, []);
+    await hardDisconnect();
+  }, [hardDisconnect]);
 
-  // ── History merge helper ──────────────────────────────────────────────────
   const addSaleToHistory = useCallback((sale) => {
     setSalesHistory((prev) => {
-      // Deduplicate by txHash
       if (prev.find((s) => s.id === sale.id)) return prev;
       return [sale, ...prev];
     });
@@ -113,8 +125,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      {/* ── Screens ─────────────────────────────────────────────────────── */}
-      <div className={`screen ${screen === "basket" ? "active" : ""}`} id="screen-basket">
+      <div className={`screen ${screen === "basket"  ? "active" : ""}`} id="screen-basket">
         <BasketScreen
           basket={basket}
           setBasket={setBasket}
@@ -139,16 +150,14 @@ export default function App() {
           showToast={showToast}
           startCheckoutMode={startCheckoutMode}
           endCheckoutMode={endCheckoutMode}
-          disconnect={disconnect}
+          disconnect={hardDisconnect}
           onSuccess={(sale) => {
             setLastSale(sale);
             addSaleToHistory(sale);
-            endCheckoutMode();
             setBasket([]);
             setScreen("success");
           }}
           onBack={() => {
-            disconnect();
             endCheckoutMode();
             setScreen("basket");
           }}
@@ -171,12 +180,10 @@ export default function App() {
         />
       </div>
 
-      {/* ── Bottom Nav ───────────────────────────────────────────────────── */}
-      {screen !== "invoice" && screen !== "success" && (
+      {screen !== "success" && (
         <BottomNav activeTab={screen} onTab={setScreen} />
       )}
 
-      {/* ── Toast ────────────────────────────────────────────────────────── */}
       {toast && (
         <Toast key={toast.id} message={toast.message} type={toast.type} onDone={() => setToast(null)} />
       )}

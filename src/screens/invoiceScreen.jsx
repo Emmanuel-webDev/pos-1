@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useModal } from "connectkit";
 import { useConfig } from "wagmi";
 import { readContract, writeContract, waitForTransactionReceipt } from "wagmi/actions";
@@ -7,16 +7,14 @@ import {
   USDC_DECIMALS,
   POS_CONTRACT_ADDRESS,
   MAX_UINT256,
-  publicClient,
-  PURCHASE_COMPLETED_EVENT,
 } from "../app";
 
 const POS_ABI = [
   {
     inputs: [
-      { internalType: "address", name: "_merchant", type: "address" },
-      { internalType: "string[]", name: "_items", type: "string[]" },
-      { internalType: "uint256[]", name: "_prices", type: "uint256[]" },
+      { internalType: "address", name: "_merchant", type: "address"   },
+      { internalType: "string[]",name: "_items",    type: "string[]"  },
+      { internalType: "uint256[]",name:"_prices",   type: "uint256[]" },
     ],
     name: "checkoutUSDC",
     outputs: [],
@@ -27,23 +25,13 @@ const POS_ABI = [
 
 const USDC_ABI = [
   {
-    type: "function",
-    name: "approve",
-    stateMutability: "nonpayable",
-    inputs: [
-      { type: "address", name: "spender" },
-      { type: "uint256", name: "amount" },
-    ],
+    type: "function", name: "approve", stateMutability: "nonpayable",
+    inputs:  [{ type: "address", name: "spender" }, { type: "uint256", name: "amount" }],
     outputs: [{ type: "bool" }],
   },
   {
-    type: "function",
-    name: "allowance",
-    stateMutability: "view",
-    inputs: [
-      { type: "address", name: "owner" },
-      { type: "address", name: "spender" },
-    ],
+    type: "function", name: "allowance", stateMutability: "view",
+    inputs:  [{ type: "address", name: "owner" }, { type: "address", name: "spender" }],
     outputs: [{ type: "uint256" }],
   },
 ];
@@ -58,27 +46,24 @@ export default function InvoiceScreen({
   waitingText,
   setWaitingText,
   showToast,
-  startCheckoutMode,
   endCheckoutMode,
-  disconnect,
   onSuccess,
   onBack,
 }) {
   const { setOpen } = useModal();
   const config = useConfig();
 
-  const [elapsed, setElapsed] = useState(0);
+  const [elapsed, setElapsed]                       = useState(0);
   const [paymentFlowStarted, setPaymentFlowStarted] = useState(false);
 
-  const startTimeRef = useRef(null);
-  const elapsedRef = useRef(null);
-  const pollRef = useRef(null);
-  const customerRef = useRef(null); // local mirror to avoid stale closures
+  const startTimeRef   = useRef(null);
+  const elapsedRef     = useRef(null);
+  const customerRef    = useRef(null);
   const flowRunningRef = useRef(false);
 
   const invoiceTotal = basket.reduce((s, i) => s + i.price, 0);
 
-  // ── Open ConnectKit QR immediately on mount ───────────────────────────────
+  // ── Open ConnectKit QR on mount ───────────────────────────────────────────
   useEffect(() => {
     startTimeRef.current = Date.now();
     setElapsed(0);
@@ -87,13 +72,7 @@ export default function InvoiceScreen({
     setPaymentFlowStarted(false);
     flowRunningRef.current = false;
 
-    // Open ConnectKit straight to QR code view
-    // Small delay lets the screen render first
-    const t = setTimeout(() => {
-      setOpen(true);
-    }, 400);
-
-    // Elapsed timer
+    const t = setTimeout(() => setOpen(true), 400);
     elapsedRef.current = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
     }, 1000);
@@ -101,20 +80,15 @@ export default function InvoiceScreen({
     return () => {
       clearTimeout(t);
       clearInterval(elapsedRef.current);
-      clearInterval(pollRef.current);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Watch for customer wallet connecting ──────────────────────────────────
+  // ── Customer connects ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!customerAddress) return;
     if (flowRunningRef.current) return;
 
-    // Prevent merchant reusing own wallet
-    if (
-      merchantAddress &&
-      customerAddress.toLowerCase() === merchantAddress.toLowerCase()
-    ) {
+    if (merchantAddress && customerAddress.toLowerCase() === merchantAddress.toLowerCase()) {
       showToast("Use a different wallet for the customer.", "error");
       return;
     }
@@ -134,81 +108,73 @@ export default function InvoiceScreen({
     setWaitingText(`Customer connected · ${customer.slice(0, 6)}…${customer.slice(-4)}`);
     setCheckoutPhase("approve");
     showToast("Customer wallet connected!", "success");
-
     await sleep(800);
 
     try {
-      const itemNames = basket.map((i) => i.name);
+      const itemNames    = basket.map((i) => i.name);
       const atomicPrices = basket.map((i) =>
         BigInt(Math.round(i.price * Math.pow(10, USDC_DECIMALS)))
       );
-      const atomicTotal = atomicPrices.reduce((a, b) => a + b, 0n);
+      const atomicTotal  = atomicPrices.reduce((a, b) => a + b, 0n);
 
-      // ── Step 1: Check allowance ───────────────────────────────────────
+      // 1 — allowance
       setWaitingText("Checking USDC allowance…");
-
       const allowance = await readContract(config, {
-        address: USDC_ADDRESS,
-        abi: USDC_ABI,
+        address: USDC_ADDRESS, abi: USDC_ABI,
         functionName: "allowance",
         args: [customer, POS_CONTRACT_ADDRESS],
       });
 
-      // ── Step 2: Approve if needed ─────────────────────────────────────
+      // 2 — approve if needed
       if (BigInt(allowance) < atomicTotal) {
         setCheckoutPhase("approve");
         setWaitingText("Approve USDC spending on customer phone…");
-        showToast("Requesting USDC approval on customer wallet…", "info");
+        showToast("Requesting USDC approval…", "info");
 
         const approveTx = await writeContract(config, {
-          address: USDC_ADDRESS,
-          abi: USDC_ABI,
+          address: USDC_ADDRESS, abi: USDC_ABI,
           functionName: "approve",
           args: [POS_CONTRACT_ADDRESS, MAX_UINT256],
         });
-
         setWaitingText("Approval sent · waiting for confirmation…");
         await waitForTransactionReceipt(config, { hash: approveTx });
         showToast("USDC approved ✓", "success");
       }
 
-      // ── Step 3: checkoutUSDC ──────────────────────────────────────────
+      // 3 — checkout
       setCheckoutPhase("pay");
       setWaitingText("Payment request sent to customer phone…");
       showToast("Confirm payment on customer wallet…", "info");
 
       const checkoutTx = await writeContract(config, {
-        address: POS_CONTRACT_ADDRESS,
-        abi: POS_ABI,
+        address: POS_CONTRACT_ADDRESS, abi: POS_ABI,
         functionName: "checkoutUSDC",
         args: [merchantAddress, itemNames, atomicPrices],
       });
 
       setWaitingText("Transaction sent · confirming on chain…");
+      const receipt = await waitForTransactionReceipt(config, { hash: checkoutTx });
 
-      const receipt = await waitForTransactionReceipt(config, {
-        hash: checkoutTx,
-      });
-
-      // ── Step 4: Build sale object & succeed ───────────────────────────
+      // 4 — success
       if (receipt.status === "success") {
+        clearInterval(elapsedRef.current);
+
         const sale = {
-          id: receipt.transactionHash,
-          txHash: receipt.transactionHash,
-          block: receipt.blockNumber?.toString() || "—",
-          buyer: customer,
-          amount: invoiceTotal,
-          items: basket.map((i) => ({ name: i.name, price: i.price })),
+          id:        receipt.transactionHash,
+          txHash:    receipt.transactionHash,
+          block:     receipt.blockNumber?.toString() || "—",
+          buyer:     customer,
+          amount:    invoiceTotal,
+          items:     basket.map((i) => ({ name: i.name, price: i.price })),
           timestamp: new Date(),
         };
 
-        clearInterval(elapsedRef.current);
-        clearInterval(pollRef.current);
+        // Hard-kill the WalletConnect pairing on customer's phone
+        // endCheckoutMode calls connector.disconnect() on every connector
+        await endCheckoutMode();
 
-        // Disconnect customer, restore merchant state
-        try {
-          await disconnect();
-        } catch (_) {}
+        // Give wagmi time to finish the disconnect before navigating
+        await sleep(400);
 
         onSuccess(sale);
       } else {
@@ -223,25 +189,21 @@ export default function InvoiceScreen({
     }
   }
 
-  // ── Demo simulate ─────────────────────────────────────────────────────────
-  function simulatePayment() {
+  // ── Demo ──────────────────────────────────────────────────────────────────
+  async function simulatePayment() {
     const fakeTx = "0xdemo" + Math.random().toString(16).slice(2, 14);
     const sale = {
-      id: fakeTx,
-      txHash: fakeTx,
-      block: "demo",
+      id: fakeTx, txHash: fakeTx, block: "demo",
       buyer: "0xDEMO0000000000000000000000000000DEMO0001",
       amount: invoiceTotal,
       items: basket.map((i) => ({ name: i.name, price: i.price })),
       timestamp: new Date(),
     };
     clearInterval(elapsedRef.current);
-    clearInterval(pollRef.current);
-    endCheckoutMode();
+    await endCheckoutMode();
     onSuccess(sale);
   }
 
-  // ── Elapsed format ────────────────────────────────────────────────────────
   const elapsedStr =
     elapsed < 60
       ? `${elapsed}s elapsed`
@@ -257,10 +219,9 @@ export default function InvoiceScreen({
         <div className="top-bar__left">
           <button
             className="back-btn"
-            onClick={() => {
+            onClick={async () => {
               clearInterval(elapsedRef.current);
-              clearInterval(pollRef.current);
-              onBack();
+              await onBack();
             }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -280,14 +241,13 @@ export default function InvoiceScreen({
       </header>
 
       <div className="screen__body invoice-body">
-        {/* Amount */}
-        <div className="invoice-amount fade-up-1">
+
+        <div className="invoice-amount fade-up-1" style={{ marginTop: 20 }}>
           <USDCIcon size={26} />
           <span className="invoice-amount__num">{invoiceTotal.toFixed(2)}</span>
           <span className="invoice-amount__unit">USDC</span>
         </div>
 
-        {/* Item pills */}
         <div className="invoice-pills fade-up-2">
           {basket.map((item) => (
             <div key={item.id} className="invoice-pill">
@@ -296,7 +256,6 @@ export default function InvoiceScreen({
           ))}
         </div>
 
-        {/* ConnectKit CTA area */}
         <div className="qr-wrap fade-up-3">
           <div className="qr-glow" />
           <div className="glass-card qr-card">
@@ -305,23 +264,18 @@ export default function InvoiceScreen({
                 <>
                   <div className="connectkit-cta__icon">📱</div>
                   <div className="connectkit-cta__text">
-                    WalletConnect QR is open
-                    <br />
+                    WalletConnect QR is open<br />
                     <span>Customer scans with any wallet app</span>
                   </div>
-                  <button
-                    className="btn-secondary connectkit-reopen"
-                    onClick={() => setOpen(true)}
-                  >
-                    Re-open QR
+                  <button className="btn-secondary connectkit-reopen" onClick={() => setOpen(true)}>
+                    Connect Customer wallet
                   </button>
                 </>
               ) : (
                 <>
                   <div className="connectkit-cta__icon">⚡</div>
                   <div className="connectkit-cta__text">
-                    Customer wallet connected
-                    <br />
+                    Customer wallet connected<br />
                     <span>Processing payment…</span>
                   </div>
                 </>
@@ -330,17 +284,14 @@ export default function InvoiceScreen({
           </div>
         </div>
 
-        {/* Phase indicator */}
         <div className="phase-indicator fade-up-4">
           {["connect", "approve", "pay"].map((phase, i, arr) => {
-            const idx = arr.indexOf(checkoutPhase);
+            const idx      = arr.indexOf(checkoutPhase);
             const isActive = phase === checkoutPhase;
-            const isDone = i < idx;
+            const isDone   = i < idx;
             return (
               <div key={phase} style={{ display: "flex", alignItems: "center" }}>
-                <div
-                  className={`phase-step ${isActive ? "phase-step--active" : ""} ${isDone ? "phase-step--done" : ""}`}
-                >
+                <div className={`phase-step ${isActive ? "phase-step--active" : ""} ${isDone ? "phase-step--done" : ""}`}>
                   <div className="phase-step__dot" />
                   <span>{phase.charAt(0).toUpperCase() + phase.slice(1)}</span>
                 </div>
@@ -350,12 +301,9 @@ export default function InvoiceScreen({
           })}
         </div>
 
-        {/* Waiting dots */}
         <div className="waiting fade-up-4">
           <div className="dots">
-            <div className="dot" />
-            <div className="dot" />
-            <div className="dot" />
+            <div className="dot" /><div className="dot" /><div className="dot" />
           </div>
           <div className="waiting__text">{waitingText}</div>
           <div className="waiting__elapsed">{elapsedStr}</div>
@@ -365,12 +313,11 @@ export default function InvoiceScreen({
           <span>⚡</span> ConnectKit · WalletConnect QR · Base Sepolia
         </div>
 
-        <button onClick={simulatePayment} className="demo-pay-btn fade-up-5">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <polygon points="5 3 19 12 5 21 5 3" />
-          </svg>
-          Simulate Payment (demo)
+        <button className="demo-pay-btn fade-up-5" onClick={simulatePayment}>
+          ▷ Simulate Payment (demo)
         </button>
+
+        <div style={{ height: 20 }} />
       </div>
     </>
   );
