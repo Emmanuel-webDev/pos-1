@@ -11,22 +11,31 @@ import "./index.css";
 const config = createConfig(
   getDefaultConfig({
     chains: [baseSepolia],
+
+    ssr: false,
+
     transports: {
       [baseSepolia.id]: http("https://sepolia.base.org"),
     },
+
     walletConnectProjectId: "a34afecf807cf78abf13bc7a69b59797",
+
     appName: "Base POS",
     appDescription: "Onchain Point of Sale on Base",
-    appUrl: typeof window !== "undefined" ? window.location.origin : "",
-    appIcon: typeof window !== "undefined" ? `${window.location.origin}/favicon.ico` : "",
-  })
-);
 
+    appUrl: typeof window !== "undefined" ? window.location.origin : "",
+
+    appIcon:
+      typeof window !== "undefined"
+        ? `${window.location.origin}/favicon.ico`
+        : "",
+  }),
+);
 const queryClient = new QueryClient();
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <WagmiProvider config={config}>
+    <WagmiProvider config={config} reconnectOnMount={false}>
       <QueryClientProvider client={queryClient}>
         <ConnectKitProvider
           theme="auto"
@@ -42,5 +51,5 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         </ConnectKitProvider>
       </QueryClientProvider>
     </WagmiProvider>
-  </React.StrictMode>
+  </React.StrictMode>,
 );

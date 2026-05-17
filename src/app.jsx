@@ -109,12 +109,30 @@ export default function App() {
   // ── endCheckoutMode ───────────────────────────────────────────────────────
   // Called after payment or Back. Hard-kills the customer's WC pairing so
   // next checkout starts completely fresh.
-  const endCheckoutMode = useCallback(async () => {
-    checkoutInProgressRef.current = false;
-    customerAddressRef.current = null;
-    setCustomerAddress(null);
-    await hardDisconnect();
-  }, [hardDisconnect]);
+const hardResetWalletConnection = async () => {
+  try {
+    // disconnect wagmi
+    await disconnect?.({ clearState: true });
+
+    // remove wagmi persistence
+    localStorage.removeItem("wagmi.store");
+
+    // remove ALL walletconnect persistence
+    Object.keys(localStorage).forEach((key) => {
+      if (key.toLowerCase().includes("walletconnect")) {
+        localStorage.removeItem(key);
+      }
+    });
+
+    Object.keys(sessionStorage).forEach((key) => {
+      if (key.toLowerCase().includes("walletconnect")) {
+        sessionStorage.removeItem(key);
+      }
+    });
+  } catch (err) {
+    console.error(err);
+  }
+};
 
   const addSaleToHistory = useCallback((sale) => {
     setSalesHistory((prev) => {
@@ -149,7 +167,7 @@ export default function App() {
           setWaitingText={setWaitingText}
           showToast={showToast}
           startCheckoutMode={startCheckoutMode}
-          endCheckoutMode={endCheckoutMode}
+          hardResetWalletConnection={hardResetWalletConnection}
           disconnect={hardDisconnect}
           onSuccess={(sale) => {
             setLastSale(sale);
@@ -158,7 +176,7 @@ export default function App() {
             setScreen("success");
           }}
           onBack={() => {
-            endCheckoutMode();
+            hardResetWalletConnection();
             setScreen("basket");
           }}
         />
