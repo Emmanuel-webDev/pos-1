@@ -3,12 +3,12 @@ import { useAccount, useDisconnect, useConnectors } from "wagmi";
 import { createPublicClient, http } from "viem";
 import { baseSepolia } from "viem/chains";
 
-import BasketScreen from "./screens/BasketScreen";
-import InvoiceScreen from "./screens/InvoiceScreen";
-import SuccessScreen from "./screens/SuccessScreen";
-import HistoryScreen from "./screens/HistoryScreen";
-import BottomNav from "./components/BottomNav";
-import Toast from "./components/Toast";
+import BasketScreen from "./screens/basketScreen";
+import InvoiceScreen from "./screens/invoiceScreen";
+import SuccessScreen from "./screens/successScreen";
+import HistoryScreen from "./screens/historyScreen";
+import BottomNav from "./components/bottomNav";
+import Toast from "./components/toast";
 
 export const EXPLORER_URL = "https://sepolia.basescan.org";
 export const USDC_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
