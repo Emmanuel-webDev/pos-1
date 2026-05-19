@@ -247,7 +247,6 @@ export default function InvoiceScreen({
         await sleep(1500);
 
         onSuccess(sale);
-
       } else {
         throw new Error("Transaction reverted");
       }
