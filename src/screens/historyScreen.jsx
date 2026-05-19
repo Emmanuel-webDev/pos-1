@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+
 import {
   EXPLORER_URL,
   DEPLOY_BLOCK,
@@ -18,11 +19,30 @@ export default function HistoryScreen({
   setSalesHistory,
   showToast,
 }) {
-  // ─────────────────────────────────────────────
-  // Fetch merchant tx history safely in chunks
-  // ─────────────────────────────────────────────
-  async function fetchChainHistory() {
+  const [loading, setLoading] = useState(true);
+
+  const [syncing, setSyncing] = useState(false);
+
+  const hasFetchedRef = useRef(false);
+
+  const fetchingRef = useRef(false);
+
+  /* -------------------------------------------------------------------------- */
+  /*                          FETCH TRANSACTION HISTORY                          */
+  /* -------------------------------------------------------------------------- */
+
+  async function fetchChainHistory(isBackground = false) {
     if (!merchantAddress) return;
+
+    if (fetchingRef.current) return;
+
+    fetchingRef.current = true;
+
+    if (isBackground) {
+      setSyncing(true);
+    } else {
+      setLoading(true);
+    }
 
     try {
       const latestBlock = await publicClient.getBlockNumber();
@@ -57,15 +77,19 @@ export default function HistoryScreen({
         fromBlock = toBlock + 1n;
       }
 
-      // newest first
+      /* ---------------------------- SORT NEWEST FIRST --------------------------- */
+
       const sortedLogs = [...allLogs].sort(
         (a, b) => Number(b.blockNumber) - Number(a.blockNumber),
       );
+
+      /* ----------------------------- FORMAT SALES ------------------------------ */
 
       const formattedSales = sortedLogs.map((log) => {
         const timestamp = Number(log.args.timestamp || 0) * 1000;
 
         const prices = log.args.prices || [];
+
         const items = log.args.items || [];
 
         return {
@@ -94,31 +118,41 @@ export default function HistoryScreen({
       });
 
       setSalesHistory(formattedSales);
+
+      hasFetchedRef.current = true;
     } catch (err) {
       console.error("History fetch error:", err);
 
       showToast("Failed to load transaction history", "error");
+    } finally {
+      setLoading(false);
+
+      setSyncing(false);
+
+      fetchingRef.current = false;
     }
   }
 
-  // ─────────────────────────────────────────────
-  // Poll every 10 seconds
-  // ─────────────────────────────────────────────
+  /* -------------------------------------------------------------------------- */
+  /*                              INITIAL FETCH                                  */
+  /* -------------------------------------------------------------------------- */
+
   useEffect(() => {
     if (!merchantAddress) return;
 
     fetchChainHistory();
 
     const interval = setInterval(() => {
-      fetchChainHistory();
+      fetchChainHistory(true);
     }, 10000);
 
     return () => clearInterval(interval);
   }, [merchantAddress]);
 
-  // ─────────────────────────────────────────────
-  // Stats
-  // ─────────────────────────────────────────────
+  /* -------------------------------------------------------------------------- */
+  /*                                   STATS                                    */
+  /* -------------------------------------------------------------------------- */
+
   const todayStart = new Date();
 
   todayStart.setHours(0, 0, 0, 0);
@@ -133,9 +167,10 @@ export default function HistoryScreen({
     ? merchantAddress.slice(0, 6) + "…" + merchantAddress.slice(-4)
     : "—";
 
-  // ─────────────────────────────────────────────
-  // Group transactions by day
-  // ─────────────────────────────────────────────
+  /* -------------------------------------------------------------------------- */
+  /*                           GROUP TRANSACTIONS                               */
+  /* -------------------------------------------------------------------------- */
+
   const groupedSales = salesHistory.reduce((groups, sale) => {
     const date = sale.date;
 
@@ -154,7 +189,6 @@ export default function HistoryScreen({
     return groups;
   }, {});
 
-  // newest days first
   const groupedEntries = Object.entries(groupedSales).sort(
     ([a], [b]) => new Date(b) - new Date(a),
   );
@@ -168,7 +202,11 @@ export default function HistoryScreen({
           <div>
             <div className="top-bar__title">Sales History</div>
 
-            <div className="top-bar__sub">All verified transactions</div>
+            <div className="top-bar__sub">
+              {syncing
+                ? "Syncing latest transactions..."
+                : "All verified transactions"}
+            </div>
           </div>
         </div>
 
@@ -187,7 +225,8 @@ export default function HistoryScreen({
       </header>
 
       <div className="screen__body">
-        {/* Summary */}
+        {/* SUMMARY */}
+
         <div className="summary-card fade-up">
           <div className="summary-card__label">Today's Revenue</div>
 
@@ -212,8 +251,21 @@ export default function HistoryScreen({
           </div>
         </div>
 
-        {/* Empty states */}
-        {!merchantAddress && (
+        {/* LOADING */}
+
+        {loading && (
+          <div className="history-loading">
+            <div className="history-loading__spinner" />
+
+            <div className="history-loading__text">
+              Fetching onchain transactions...
+            </div>
+          </div>
+        )}
+
+        {/* EMPTY */}
+
+        {!loading && !merchantAddress && (
           <div className="empty-state">
             <div className="empty-state__icon">🔗</div>
 
@@ -223,7 +275,7 @@ export default function HistoryScreen({
           </div>
         )}
 
-        {merchantAddress && salesHistory.length === 0 && (
+        {!loading && merchantAddress && salesHistory.length === 0 && (
           <div className="empty-state">
             <div className="empty-state__icon">📭</div>
 
@@ -235,105 +287,108 @@ export default function HistoryScreen({
           </div>
         )}
 
-        {/* Transaction list */}
-        <div className="history-list">
-          {groupedEntries.map(([dayKey, sales]) => {
-            const sectionDate = new Date(dayKey);
+        {/* HISTORY */}
 
-            const today = new Date();
+        {!loading && (
+          <div className="history-list">
+            {groupedEntries.map(([dayKey, sales]) => {
+              const sectionDate = new Date(dayKey);
 
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
+              const today = new Date();
 
-            const isToday = sectionDate.toDateString() === today.toDateString();
+              const yesterday = new Date();
 
-            const isYesterday =
-              sectionDate.toDateString() === yesterday.toDateString();
+              yesterday.setDate(yesterday.getDate() - 1);
 
-            const sectionTitle = isToday
-              ? "Today"
-              : isYesterday
-                ? "Yesterday"
-                : sectionDate.toLocaleDateString([], {
-                    month: "long",
-                    day: "numeric",
-                    year: "numeric",
-                  });
+              const isToday =
+                sectionDate.toDateString() === today.toDateString();
 
-            const dailyTotal = sales.reduce(
-              (sum, sale) => sum + sale.amount,
-              0,
-            );
+              const isYesterday =
+                sectionDate.toDateString() === yesterday.toDateString();
 
-            return (
-              <div key={dayKey} className="history-section">
-                {/* Section Header */}
-                <div className="history-section__header">
-                  <div className="history-section__title">{sectionTitle}</div>
+              const sectionTitle = isToday
+                ? "Today"
+                : isYesterday
+                  ? "Yesterday"
+                  : sectionDate.toLocaleDateString([], {
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                    });
 
-                  <div className="history-section__total">
-                    ${dailyTotal.toFixed(2)} USDC
+              const dailyTotal = sales.reduce(
+                (sum, sale) => sum + sale.amount,
+                0,
+              );
+
+              return (
+                <div key={dayKey} className="history-section">
+                  <div className="history-section__header">
+                    <div className="history-section__title">{sectionTitle}</div>
+
+                    <div className="history-section__total">
+                      ${dailyTotal.toFixed(2)} USDC
+                    </div>
                   </div>
-                </div>
 
-                {/* Transactions */}
-                {sales.map((sale, idx) => {
-                  const date = sale.date;
+                  {sales.map((sale, idx) => {
+                    const date = sale.date;
 
-                  const timeStr = date.toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  });
+                    const timeStr = date.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
 
-                  const itemNames =
-                    sale.items?.map((i) => i.name).join(", ") || "Sale";
+                    const itemNames =
+                      sale.items?.map((i) => i.name).join(", ") || "Sale";
 
-                  const icon = sale.items?.[0]
-                    ? getItemIcon(sale.items[0].name)
-                    : "🛍️";
+                    const icon = sale.items?.[0]
+                      ? getItemIcon(sale.items[0].name)
+                      : "🛍️";
 
-                  const shortHash = sale.txHash
-                    ? sale.txHash.slice(0, 10) + "…" + sale.txHash.slice(-6)
-                    : "—";
+                    const shortHash = sale.txHash
+                      ? sale.txHash.slice(0, 10) + "…" + sale.txHash.slice(-6)
+                      : "—";
 
-                  return (
-                    <div
-                      key={sale.id}
-                      className="history-row"
-                      style={{
-                        animationDelay: `${idx * 0.04}s`,
-                      }}
-                      onClick={() => {
-                        window.open(
-                          `${EXPLORER_URL}/tx/${sale.txHash}`,
-                          "_blank",
-                        );
-                      }}
-                    >
-                      <div className="history-row__icon">{icon}</div>
+                    return (
+                      <div
+                        key={sale.id}
+                        className="history-row"
+                        style={{
+                          animationDelay: `${idx * 0.04}s`,
+                        }}
+                        onClick={() => {
+                          window.open(
+                            `${EXPLORER_URL}/tx/${sale.txHash}`,
+                            "_blank",
+                          );
+                        }}
+                      >
+                        <div className="history-row__icon">{icon}</div>
 
-                      <div className="history-row__info">
-                        <div className="history-row__items">{itemNames}</div>
+                        <div className="history-row__info">
+                          <div className="history-row__items">{itemNames}</div>
 
-                        <div className="history-row__time">{timeStr}</div>
+                          <div className="history-row__time">{timeStr}</div>
 
-                        <div className="history-row__hash">{shortHash}</div>
-                      </div>
-
-                      <div className="history-row__right">
-                        <div className="history-row__amount">
-                          ${sale.amount.toFixed(2)}
+                          <div className="history-row__hash">{shortHash}</div>
                         </div>
 
-                        <div className="badge-verified">✓ Base</div>
+                        <div className="history-row__right">
+                          <div className="history-row__amount">
+                            ${sale.amount.toFixed(2)}
+                          </div>
+
+                          <div className="badge-verified">✓ Base</div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <div style={{ height: 20 }} />
       </div>

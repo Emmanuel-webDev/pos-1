@@ -1193,6 +1193,35 @@ input[type="number"]::-webkit-outer-spin-button {
   color: var(--success);
 }
 
+.history-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 20px;
+  gap: 14px;
+}
+
+.history-loading__spinner {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  border: 3px solid rgba(255,255,255,0.12);
+  border-top-color: white;
+  animation: spin 1s linear infinite;
+}
+
+.history-loading__text {
+  opacity: 0.8;
+  font-size: 14px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ─── Bottom Nav ─────────────────────────────────────────────── */
 /*
   Lives OUTSIDE screens in the flex column, so it's always visible
