@@ -76,39 +76,40 @@ export default function InvoiceScreen({
   const elapsedRef = useRef(null);
   const customerRef = useRef(null);
   const flowRunningRef = useRef(false);
+  const completedPaymentRef = useRef(false);
 
   const invoiceTotal = basket.reduce((s, i) => s + i.price, 0);
 
-  const hardResetWalletConnection = async () => {
-    try {
-      // Disconnect wagmi
-      await disconnect?.({ clearState: true });
+const hardResetWalletConnection = async () => {
+  try {
+    // Disconnect wagmi
+    await disconnect?.({ clearState: true });
 
-      // Remove wagmi persistence
-      localStorage.removeItem("wagmi.store");
+    // Remove wagmi persistence
+    localStorage.removeItem("wagmi.store");
 
-      // Remove walletconnect persistence
-      Object.keys(localStorage).forEach((key) => {
-        if (key.toLowerCase().includes("walletconnect")) {
-          localStorage.removeItem(key);
-        }
-      });
+    // Remove walletconnect persistence
+    Object.keys(localStorage).forEach((key) => {
+      if (key.toLowerCase().includes("walletconnect")) {
+        localStorage.removeItem(key);
+      }
+    });
 
-      Object.keys(sessionStorage).forEach((key) => {
-        if (key.toLowerCase().includes("walletconnect")) {
-          sessionStorage.removeItem(key);
-        }
-      });
+    Object.keys(sessionStorage).forEach((key) => {
+      if (key.toLowerCase().includes("walletconnect")) {
+        sessionStorage.removeItem(key);
+      }
+    });
 
-      customerRef.current = null;
-      flowRunningRef.current = false;
+    customerRef.current = null;
 
-      setCustomerAddress?.(null);
-      setPaymentFlowStarted(false);
-    } catch (err) {
-      console.error("Wallet reset failed:", err);
-    }
-  };
+    flowRunningRef.current = false;
+
+    setPaymentFlowStarted(false);
+  } catch (err) {
+    console.error("Wallet reset failed:", err);
+  }
+};
 
   // ── Open ConnectKit QR on mount ───────────────────────────────────────────
   useEffect(() => {
@@ -156,10 +157,17 @@ export default function InvoiceScreen({
 
   useAccountEffect({
     onDisconnect() {
+      // Ignore disconnect after successful payment
+      if (completedPaymentRef.current) return;
+
       customerRef.current = null;
+
       flowRunningRef.current = false;
+
       setPaymentFlowStarted(false);
+
       setCheckoutPhase("connect");
+
       setWaitingText("Customer: scan QR with wallet app");
     },
   });
@@ -227,29 +235,37 @@ export default function InvoiceScreen({
       });
 
       // 4 — success
-      if (receipt.status === "success") {
-        clearInterval(elapsedRef.current);
+     if (receipt.status === "success") {
+       clearInterval(elapsedRef.current);
 
-        const sale = {
-          id: receipt.transactionHash,
-          txHash: receipt.transactionHash,
-          block: receipt.blockNumber?.toString() || "—",
-          buyer: customer,
-          amount: invoiceTotal,
-          items: basket.map((i) => ({ name: i.name, price: i.price })),
-          timestamp: new Date(),
-        };
+       completedPaymentRef.current = true;
 
-        // Hard-kill the WalletConnect pairing on customer's phone
-        // endCheckoutMode calls connector.disconnect() on every connector
-        await hardResetWalletConnection();
+       const now = new Date();
 
-        await sleep(1500);
+       const sale = {
+         id: receipt.transactionHash,
+         txHash: receipt.transactionHash,
+         block: receipt.blockNumber?.toString() || "—",
+         buyer: customer,
+         amount: invoiceTotal,
 
-        onSuccess(sale);
-      } else {
-        throw new Error("Transaction reverted");
-      }
+         items: basket.map((i) => ({
+           name: i.name,
+           price: i.price,
+         })),
+
+         timestamp: now.getTime(),
+         date: now,
+       };
+
+       await hardResetWalletConnection();
+
+       await sleep(1500);
+
+       onSuccess(sale);
+     } else {
+       throw new Error("Transaction reverted");
+     }
     } catch (err) {
       console.error(err);
       flowRunningRef.current = false;
